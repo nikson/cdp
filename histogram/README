@@ -1,0 +1,20 @@
+Problem D
+Color Histogram
+
+In image processing and photography, a color histogram is a representation of the
+distribution of colors in an image. For digital images, a color histogram represents the
+number of pixels that have colors in each of a fixed list of color ranges, that span the
+image's color space, the set of all possible colors. 2
+Create a parallel version of an algorithm that generates a color histogram of a digital
+image.
+
+Input
+
+The input image is a text file using PPM format 3 . The image resolution is up to 4k.
+The input must be read from the standard input.
+
+Output
+
+The output contains 64 numbers representing the mean of pixel used in the digital
+image. Each number is a floating point number with 3 decimal places.
+The output must be written to the standard output.

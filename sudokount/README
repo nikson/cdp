@@ -1,0 +1,15 @@
+Problem C
+Sudokount
+
+Sudoku is a combinatorial number placement puzzle. It consists of a 9x9 grid (81 cell)
+divided into 9 3x3 boxes. Each cell might be empty or contain a number from 1 to 9. A
+unit is the collection of cells present in a line, column, or box. Therefore, each cell
+belongs to exactly 3 distinct units. The objective of the game is to fill the empty cells
+with numbers from 1 to 9 such that every unit contains all the numbers from 1 to 9. In
+other words, a solution is a fully filled the grid that has no line, column, or box
+containing the same number more than once. Normally each puzzle has only one
+solution. Figure C1 shows a Sudoku puzzle with a box (blue) and the three units
+(yellow) of a specific cell (red) highlighted. Solution numbers for the empty cells are
+marked in green.
+
+See PDF file for the rest of the text.
