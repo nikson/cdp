@@ -12,6 +12,7 @@ import (
 	"strings"
 	"context"
 	"runtime"
+	"sync"
 )
 
 // ------------- Data types -------------------- //
@@ -119,8 +120,11 @@ func (s Stack) addRule(r Rule) Stack {
 // 5. step 5: p = Aq, apply all production rules for A=>R
 // 6. step 6: recursive call on R, if any SUCCESS found terminate the execution
 
-func evaluate_grammar(ctx context.Context, output chan <- Stack, g Grammar, data Stack) Stack {
+func evaluate_grammar(ctx context.Context, output chan <- Stack, wg *sync.WaitGroup, g Grammar, data Stack) Stack {
 	// cancel all recursive call/goroutine thread while "cancel" triggered
+
+	defer wg.Done()
+
 	select {
 	case <-ctx.Done():
 		return NewStack()
@@ -133,6 +137,7 @@ func evaluate_grammar(ctx context.Context, output chan <- Stack, g Grammar, data
 	// 2. step 2: first symbol of current is terminal, return FAILED
 	if ( !data.current.empty() && is_terminal(g, data.current[0])) {
 		data.success = false
+		//output <- data
 		return data
 	}
 
@@ -147,6 +152,7 @@ func evaluate_grammar(ctx context.Context, output chan <- Stack, g Grammar, data
 		// 4. step 4: input empty but current contains a terminal: return FAILED
 		if (contains_terminal(g, data.current)) {
 			data.success = false
+			//output <- data
 			return data
 		}
 	}
@@ -163,13 +169,15 @@ func evaluate_grammar(ctx context.Context, output chan <- Stack, g Grammar, data
 		default:
 		}
 
-		go evaluate_grammar(ctx, output, g, s)
+		wg.Add(1)
+		go evaluate_grammar(ctx, output, wg, g, s)
 		//temp := evaluate_grammar(ctx, output, g, s)
 		//if temp.success {
 		//	return temp
 		//}
 	}
 
+	//output <- data
 	return data
 }
 
@@ -357,24 +365,27 @@ func main() {
 	begin := input
 	begin.current = NewSymbolSet(gram.start.str())
 
-	//var wg sync.WaitGroup
+	// worker counter
+	wg := sync.WaitGroup{}
+	// recursive call cancel handler
 	ctx, cancel := context.WithCancel(context.Background())
+	// result channel
 	result_chan := make(chan Stack)                // single buffer for 1 success value
 	result := NewStack()
 
-	// goroutine
-	go func(output chan Stack) {
-		// FIXME:
-		//defer close(result_chan)
-		evaluate_grammar(ctx, output, gram, begin)
-		//print_output(result)
-		//out <- ret
-	}(result_chan)
+	// count
+	wg.Add(1)
+	// start main go routine
+	go evaluate_grammar(ctx, result_chan, &wg, gram, begin)
 
+	// Special routine: if all evaluate_grammar routine finish without SUCCESS, detect it and push empty stack
+	go func(out chan <- Stack, wgg *sync.WaitGroup) {
+		wg.Wait()
+		out <- NewStack()
+	}(result_chan, &wg)
+
+	// Wait for result, if result found cancel all recurisve call and print result
 	result = <-result_chan
 	cancel()
-	close(result_chan)
-
-	//wg.Wait()                // Not in use
 	print_output(result)
 }
