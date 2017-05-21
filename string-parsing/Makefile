@@ -1,7 +1,7 @@
 
 all: spec
 
-life:
+spec:
 	go build -o spec spec.go
 
 clean:
