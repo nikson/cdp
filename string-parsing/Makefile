@@ -1,10 +1,13 @@
-.PHONY = all clean test mpp
 
-all : spec
+all: spec
 
-clean :
-	rm -rf spec *dSYM*
+life:
+	go build -o spec spec.go
 
-spec : spec.cc spec.hh
-	g++ -std=c++11 -Wall -Wextra -O3 spec.cc -o spec
+clean:
+	rm -f spec
+
+install:
+	go install 
+	
 
