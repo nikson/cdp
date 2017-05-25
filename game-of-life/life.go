@@ -69,40 +69,30 @@ func play(src Board) Board {
 
 // Count the neighbour of [row,col] player
 func neighbour(b Board, row int, col int) int {
-	// start-end row, start-end col
-	start_r, end_r, start_c, end_c := row - 1, row + 1, col - 1, col + 1
 
-	if start_r < 0 {
-		start_r = row
+	// init count, row start, row end, col start, col end
+	count, rs, re, cs, cr := 0, row, row, col, col
+
+	if row > 0 {
+		rs = row - 1
+	}
+	if row + 1 < b.size {
+		re = row + 1
+	}
+	if col > 0 {
+		cs = col - 1
+	}
+	if col + 1 < b.size {
+		cr = col + 1
 	}
 
-	if end_r >= b.size {
-		end_r = end_r - 1
-	}
-
-	if start_c < 0 {
-		start_c = col
-	}
-
-	if end_c >= b.size {
-		end_c = end_c - 1
-	}
-
-	count := 0
-	for k := start_r; k <= end_r; k++ {
-		for i := start_c; i <= end_c; i++ {
-			count += b.data[k][i]
+	for k := rs; k <= re; k++ {
+		for l := cs; l <= cr; l++ {
+			count += b.data[k][l];
 		}
 	}
 
-	//for _, i := range b.data[start_r:end_r+1] {
-	//
-	//	for _, k := range i[start_c : end_c+1] {
-	//		count += k;
-	//	}
-	//}
-
-	// minus self from counting
+	// minus self from count
 	count -= b.data[row][col]
 	return count
 }
@@ -112,7 +102,7 @@ func game_of_life_status(current_status int, neighbour int) int {
 	// current status of life (0/1), current status remain same if neighbour=2
 	life := current_status
 
-	if (neighbour < 2 || neighbour > 3) {
+	if neighbour < 2 || neighbour > 3 {
 		// died for suffocation
 		life = 0
 	} else if neighbour == 3 {
@@ -146,7 +136,8 @@ func read_input(rd io.Reader) (Board, int, error) {
 
 	board := NewBoard(size)
 
-	for i := 0; i < size; i++ {
+	// FIXME: there is a flaw in C sequential code, first line is empyt line, because of that i'm ignoring first line
+	for i := 1; i < size; i++ {
 		if scanner.Scan() {
 			line := scanner.Text()
 			for k, c := range line {
