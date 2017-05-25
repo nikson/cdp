@@ -10,9 +10,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"context"
-	"runtime"
-	"sync"
 )
 
 // ------------- Data types -------------------- //
@@ -131,16 +128,9 @@ func (s Stack) addRule(r Rule) Stack {
 // 5. step 5: p = Aq, apply all production rules for A=>R
 // 6. step 6: recursive call on R, if any SUCCESS found terminate the execution
 
-func evaluate_grammar(ctx context.Context, output chan <- Stack, wg *sync.WaitGroup, g Grammar, data Stack) Stack {
-	// cancel all recursive call/goroutine thread while "cancel" triggered
+func evaluate_grammar(g Grammar, data Stack) Stack {
 
-	defer wg.Done()
-
-	select {
-	case <-ctx.Done():
-		return NewStack()
-	default:
-	}
+	//fmt.Println(data.current, data.input)
 
 	// 1. step 1: eliminate common prefix
 	data = reduce(data);
@@ -148,7 +138,6 @@ func evaluate_grammar(ctx context.Context, output chan <- Stack, wg *sync.WaitGr
 	// 2. step 2: first symbol of current is terminal, return FAILED
 	if ( !data.current.empty() && is_terminal(g, data.current[0])) {
 		data.success = false
-		//output <- data
 		return data
 	}
 
@@ -156,14 +145,11 @@ func evaluate_grammar(ctx context.Context, output chan <- Stack, wg *sync.WaitGr
 		// 3. step 3: input and current are empty : return SUCCESS
 		if (data.current.empty()) {
 			data.success = true;
-			// write the SUCCESS stack in output channel, which will trigger terminate program
-			output <- data
 			return data;
 		}
 		// 4. step 4: input empty but current contains a terminal: return FAILED
 		if (contains_terminal(g, data.current)) {
 			data.success = false
-			//output <- data
 			return data
 		}
 	}
@@ -173,22 +159,12 @@ func evaluate_grammar(ctx context.Context, output chan <- Stack, wg *sync.WaitGr
 
 	// 6. step 6: recursive call on R, if any SUCCESS found terminate the execution
 	for _, s := range new_stacks {
-		// if cancel trigger, exit
-		select {
-		case <-ctx.Done():
-			return NewStack()
-		default:
+		temp := evaluate_grammar(g, s)
+		if temp.success {
+			return temp
 		}
-
-		wg.Add(1)
-		go evaluate_grammar(ctx, output, wg, g, s)
-		//temp := evaluate_grammar(ctx, output, g, s)
-		//if temp.success {
-		//	return temp
-		//}
 	}
 
-	//output <- data
 	return data
 }
 
@@ -213,12 +189,12 @@ func derive_leftmost_grammar(g Grammar, s Stack) []Stack {
 	return stacks
 }
 
-func find_grammar(g Grammar, lef_rule string) []Rule {
+func find_grammar(g Grammar, left_rule string) []Rule {
 	rules := make([]Rule, 0)
 
 	for _, r := range g.rules {
 		// flaten the array
-		if r.left.str() == lef_rule {
+		if r.left.str() == left_rule {
 			rules = append(rules, r)
 		}
 	}
@@ -368,38 +344,22 @@ func print(grm Grammar, st Stack) {
 		fmt.Println(r.str())
 	}
 }
+func print_stack(st Stack) {
+	//fmt.Println("Input word:")
+	fmt.Println(st.input.str())
+	fmt.Println(st.current.str())
+	for _, r := range st.path {
+		fmt.Println(r.str())
+	}
+}
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-
-	// read input from stdin
 	gram, input := read_input(os.Stdin)
 	//print(gram, input)
 
 	begin := input
 	begin.current = NewSymbolSet(gram.start.str())
 
-	// worker counter
-	wg := sync.WaitGroup{}
-	// recursive call cancel handler
-	ctx, cancel := context.WithCancel(context.Background())
-	// result channel
-	result_chan := make(chan Stack)                // single buffer for 1 success value
-	result := NewStack()
-
-	// count
-	wg.Add(1)
-	// start main go routine
-	go evaluate_grammar(ctx, result_chan, &wg, gram, begin)
-
-	// Special routine: if all evaluate_grammar routine finish without SUCCESS, detect it and push empty stack
-	go func(out chan <- Stack, wgg *sync.WaitGroup) {
-		wg.Wait()
-		out <- NewStack()
-	}(result_chan, &wg)
-
-	// Wait for result, if result found cancel all recurisve call and print result
-	result = <-result_chan
-	cancel()
-	print_output(result)
+	ret := evaluate_grammar(gram, begin)
+	print_output(ret)
 }
