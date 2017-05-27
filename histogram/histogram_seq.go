@@ -7,8 +7,6 @@ import (
 	"io"
 	"strings"
 	"errors"
-	"sync"
-	"runtime"
 )
 
 // ----------------- data type ------------------
@@ -28,52 +26,30 @@ type PPMImage struct {
 	size           int
 }
 
-// index, value pair of histogram
-type HVPair struct {
-	index int
-	value float32
-}
+// ----------------- data type ------------------
 
-// ----------------- data type ----------------------------
-
-// ----------------- problem solving function -------------
-
-func count(img *PPMImage, hist []float32, key, r, g, b int, wg *sync.WaitGroup) {
-	defer wg.Done()
-	count := 0
-	for i := 0; i < img.size; i++ {
-		if (img.data[i].r == r && img.data[i].g == g && img.data[i].b == b) {
-			count++;
-		}
-	}
-	h := float32(count) / float32(img.size)
-	//return HVPair{index: key, value:h }
-	// hist is slice, and pass-by-reference
-	hist[key] = h
-}
-
-func Histogram(img *PPMImage) []float32 {
+func Histogram(img PPMImage) []float32 {
 	hist := make([]float32, 64)
-	wg := sync.WaitGroup{}
-	wg.Add(64)                        // ToDo: optimizatoin
 
-	for index, r := 0, 0; r <= 3; r++ {
-		for g := 0; g <= 3; g++ {
-			for b := 0; b <= 3; b++ {
-				// start goroutine for each count
-				go count(img, hist, index, r, g, b, &wg)
+	index, count := 0, 0
 
+	for j := 0; j <= 3; j++ {
+		for k := 0; k <= 3; k++ {
+			for l := 0; l <= 3; l++ {
+				for i := 0; i < img.size; i++ {
+					if (img.data[i].r == j && img.data[i].g == k && img.data[i].b == l) {
+						count++;
+					}
+				}
+				hist[index] = float32(count) / float32(img.size)
 				index++
+				count = 0
 			}
 		}
 	}
 
-	wg.Wait()
-
 	return hist
 }
-
-// --------------------------------------------------------
 
 func read_input(rd io.Reader) (PPMImage, error) {
 	reader := bufio.NewReader(rd)
@@ -137,8 +113,6 @@ func read_input(rd io.Reader) (PPMImage, error) {
 }
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-
 	data, err := read_input(os.Stdin)
 
 	if err != nil {
@@ -147,7 +121,7 @@ func main() {
 	}
 	//fmt.Println(data)
 
-	result := Histogram(&data)
+	result := Histogram(data)
 
 	// print output
 	for _, h := range result {
