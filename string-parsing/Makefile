@@ -2,7 +2,7 @@
 all: spec
 
 spec:
-	go build -o spec spec_seq.go
+	go build -o spec spec.go
 
 clean:
 	rm -f spec
