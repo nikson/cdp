@@ -15,59 +15,38 @@ import (
 )
 
 // ------------------ Data type -----------
+
 type Board struct {
-	// optimization: work with byte array
-	data [][]byte
+	data [][]int
 	size int
 }
 
-func NewBoard(sz int) Board {
-	// Be careful: slice always reference original underlaying array
-	board := Board{data: make([][]byte, sz), size: sz}
-	for i := 0; i < sz; i++ {
-		board.data[i] = make([]byte, sz)
-	}
-	return board
-}
-
 type RowChunk struct {
-	row_id int    // row_id of current chunk
-	value  []byte // current data set
-	result []byte // result data set
-	top    []byte // above row of row_value
-	bottom []byte // bottom row of row_value
+	row_id int   // row_id of current chunk
+	value  []int // current data set
+	result []int // result data set
+	top    []int // above row of row_value
+	bottom []int // bottom row of row_value
 }
 
-func NewRowChunk(id, size int) RowChunk {
-	rc := RowChunk{}
-	rc.row_id = id;
-	rc.value = make([]byte, size)
-	rc.result = make([]byte, size)
-	rc.top = make([]byte, size)
-	rc.bottom = make([]byte, size)
-	return rc
-}
-
-func (rc RowChunk)  play() RowChunk {
+func (rc RowChunk)  update() RowChunk {
 	size := len(rc.value)
+	rc.result = make([]int, size)
 
 	// Optimization: Use dynamic algo (DP) for counting life rules in a single loop
 	// DP algo:
 	// neighbour = head_3x3 - tail_3x3 - current[row][col]; head = row + 1, tail = row - 2;
 	// head - tail = row + 1 - row + 2 =  3x3 grid sum
 	head := 0
-
-	if size > 0 {
-		head = count_X(rc.top[0], rc.bottom[0], rc.value[0])
+	if (  size > 0 ) {
+		head := rc.top[0] + rc.bottom[0] + rc.value[0]
 	}
-
-	// temporary hold the last 3 head value
-	temp := []int{head }
+	temp := []int{head}
 
 	for k, tail := 0, 0; k < size; k++ {
 		// update head
 		if ( k + 1 < size ) {
-			head = count_X(rc.top[k + 1], rc.bottom[k + 1], rc.value[k + 1]) + head
+			head = (rc.top[k + 1] + rc.bottom[k + 1] + rc.value[k + 1] ) + head
 		}
 		// add head in temp list
 		temp = append(temp, head)
@@ -77,17 +56,68 @@ func (rc RowChunk)  play() RowChunk {
 			temp = temp[1:]
 		}
 
-		current := 0
-		if rc.value[k] == 120 {
-			current = 1
-		}
+		neighbour := head - tail - rc.value[k]
 
-		neighbour := head - tail - current
-
-		rc.result[k] = set_life_status(game_of_life_status(current, neighbour))
+		rc.result[k] = game_of_life_status(rc.value[k], neighbour);
 	}
 
 	return rc
+}
+
+func NewBoard(sz int) Board {
+	// Be careful: slice always reference original underlaying array
+	board := Board{data: make([][]int, sz), size: sz}
+	for i := 0; i < sz; i++ {
+		board.data[i] = make([]int, sz)
+	}
+	return board
+}
+
+func (src Board) clone() Board {
+	dst := Board{data: make([][]int, src.size), size: src.size}
+	for i := 0; i < src.size; i++ {
+		row := make([]int, src.size)
+		copy(row, src.data[i])  // copy(dest, src) !!!
+		dst.data[i] = row
+	}
+	return dst
+}
+
+func (b Board) get(row int, col int) int {
+	return b.data[row][col]
+}
+
+func (b Board) set(row int, col int, value int) Board {
+	b.data[row][col] = value
+	return b
+}
+
+func (b Board) neighbour(row int, col int) int {
+	// init count, row start, row end, col start, col end
+	count, rs, re, cs, cr := 0, row, row, col, col
+
+	if row > 0 {
+		rs = row - 1
+	}
+	if row + 1 < b.size {
+		re = row + 1
+	}
+	if col > 0 {
+		cs = col - 1
+	}
+	if col + 1 < b.size {
+		cr = col + 1
+	}
+
+	for k := rs; k <= re; k++ {
+		for l := cs; l <= cr; l++ {
+			count += b.data[k][l];
+		}
+	}
+
+	// minus self from count
+	count -= b.data[row][col]
+	return count
 }
 
 // -------------------- problem solving functions ----------------------
@@ -98,28 +128,20 @@ func (rc RowChunk)  play() RowChunk {
 // setp 3: merge row into final board
 // step 4: return final board, if playing continue goto step 1 using final-board
 
-func count_X(x, y, z byte) int {
-	count := 0;
-	// 'x' = 120
-	if ( x == 120) {
-		count = count + 1
-	}
-	if ( y == 120) {
-		count = count + 1
-	}
-	if ( z == 120) {
-		count = count + 1
-	}
-	return count
-}
+func play(src Board) Board {
+	dst := src.clone()
 
-func set_life_status(state int) byte {
-	life := byte(' ')
-	if state == 1 {
-		life = byte('x')
+	for r := 0; r < src.size; r++ {
+		for c := 0; c < src.size; c++ {
+			// count the neighbour
+			count := src.neighbour(r, c)
+			life := game_of_life_status(src.data[r][c], count)
+			// update new board by life value
+			dst.data[r][c] = life
+		}
 	}
 
-	return life
+	return dst
 }
 
 // game of life rules of new life, died or survive
@@ -154,24 +176,28 @@ func play_parallel(board Board, in chan <- RowChunk, out <-chan RowChunk) Board 
 func split(b Board, data_in chan <- RowChunk) {
 
 	for i := 0; i < b.size; i++ {
+		chunk := RowChunk{}
 		// working row id
-		chunk := NewRowChunk(i, b.size)
-
+		chunk.row_id = i
 		// working row value
-		copy(chunk.value, b.data[i])
+		chunk.value = b.data[i]
 
-		// default top, bottom row is empty array
 		if chunk.row_id > 0 {
-			copy(chunk.top, b.data[chunk.row_id - 1])
+			chunk.top = b.data[chunk.row_id - 1]
+		} else {
+			chunk.top = make([]int, b.size)
 		}
 
 		if chunk.row_id + 1 < b.size {
-			copy(chunk.bottom, b.data[chunk.row_id + 1])
+			chunk.bottom = b.data[chunk.row_id + 1]
+		} else {
+			chunk.bottom = make([]int, b.size)
 		}
 
 		// write chunk data in worker channel queue
 		data_in <- chunk
 	}
+
 }
 
 func merge(total int, data_out <-chan RowChunk) Board {
@@ -182,7 +208,7 @@ func merge(total int, data_out <-chan RowChunk) Board {
 		// get processed data from worker channel queue
 		item, ok := <-data_out
 		if ok {
-			copy(dst.data[item.row_id], item.result)
+			dst.data[item.row_id] = item.result
 		}
 	}
 
@@ -200,10 +226,8 @@ func init_worker_pool(pool_size int, state <-chan bool, out <-chan RowChunk, in 
 						break
 					}
 				default:
-					data, ok := <-out
-					if ok {
-						in <- data.play()
-					}
+					data := <-out
+					in <- data.update()
 				}
 			}
 		}()
@@ -229,11 +253,17 @@ func read_input(rd io.Reader) (Board, int, error) {
 
 	board := NewBoard(size)
 
-	// FIXME: there is a flaw in C sequential code, first line is empty line, because of that i'm ignoring first line ([0])
+	// FIXME: there is a flaw in C sequential code, first line is empyt line, because of that i'm ignoring first line
 	for i := 1; i < size; i++ {
 		if scanner.Scan() {
 			line := scanner.Text()
-			board.data[i] = []byte(line)
+			for k, c := range line {
+				v := 0
+				if string(c) == "x" {
+					v = 1
+				}
+				board.set(i, k, v)
+			}
 		}
 	}
 
@@ -242,7 +272,15 @@ func read_input(rd io.Reader) (Board, int, error) {
 
 func print_board(b Board) {
 	for i := 0; i < b.size; i++ {
-		fmt.Println(string(b.data[i]))
+		for k := 0; k < b.size; k++ {
+			if ( b.data[i][k] == 1 ) {
+				fmt.Print("x")
+			} else {
+				fmt.Print(" ")
+			}
+
+		}
+		fmt.Println()
 	}
 }
 
@@ -281,10 +319,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// optimization: use buffered queue
-	wstate := make(chan bool, cpu)
-	data_in := make(chan RowChunk, cpu*2)
-	data_out := make(chan RowChunk, cpu*2)
+	wstate := make(chan bool)
+	data_in := make(chan RowChunk)
+	data_out := make(chan RowChunk)
 
 	go init_worker_pool(cpu, wstate, data_in, data_out);
 
