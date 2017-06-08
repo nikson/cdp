@@ -97,8 +97,9 @@ void read_file (FILE * f, cell_t ** board, int size) {
 int main () {
 	int size, steps;
 	FILE    *f;
-  f = stdin;
+	f = stdin;
 	fscanf(f,"%d %d", &size, &steps);
+	while (fgetc(f) != '\n') /* no-op */;
 	cell_t ** prev = allocate_board (size);
 	read_file (f, prev,size);
 	fclose(f);
