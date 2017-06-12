@@ -1,0 +1,36 @@
+Problem B
+Game of Life
+
+The Game of Life is a cellular automaton invented by Cambridge mathematician John
+Conway. It consists of a collection of cells which, based on a few mathematical rules,
+can live, die or multiply. Depending on the initial conditions, the cells form various
+patterns throughout the course of the game. In this version of the game we have a square
+board (2D array) where cells are updated in each timestep according to the following
+rules:
+
+For a space that is populated:
+o Each cell with one or no neighbors dies, as if by solitude.
+o Each cell with four or more neighbors dies, as if by overpopulation.
+o Each cell with two or three neighbors survives.
+
+
+For a space that is empty or unpopulated:
+o Each cell with three neighbors becomes populated.
+Figure B1 provides an example of the Game of Life in a 11×11 board. Empty cells and
+populated cells are represented by light and dark gray squares, respectively. Pane (a)
+shows the initial board and pane (h) shows the simulation result after 7 timesteps.
+
+Input
+
+The first line informs the board size and the number of steps (both integers), separated
+by a white space. The following lines represent the cells of the initial board, where a
+whitespace represent an empty cell and a “x” represent a populated one. Lines in the
+board are separated by line breaks.
+The input must be read from the standard input.
+
+Output
+
+The program will print the last board, i.e., the board after all timesteps, where a
+whitespace represents an empty cell and a “x” represent a populated one. Lines in the
+board are separated by line breaks.
+The output must be written to the standard output.
