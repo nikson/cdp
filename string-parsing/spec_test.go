@@ -12,23 +12,27 @@ package main
 
 import (
 	"fmt"
+	"strings"
+	"testing"
 )
 
-func test_map() {
+func Test_map(t *testing.T) {
 	// map is not concurrent safe and reference type
 	m := make(map[string]string)
 
 	m["c"] = "value c"
 }
 
-func test_solution_func() {
+func Test_solution_func(t *testing.T) {
 	gram := NewGrammar()
-	grm.terminal = NewSymbolSet("r d o a e i")
-	grm.nonterminal = NewSymbolSet("S X Z")
-	grm.start = Symbol(strings.Trim("S", " "))
+	gram.terminal = NewSymbolSet("r d o a e i")
+	gram.nonterminal = NewSymbolSet("S X Z")
+	gram.start = Symbol(strings.Trim("S", " "))
 
-	grm.rules = []Rule{Rule{NewSymbolSet("S"), NewSymbolSet("r X d")}}
+	gram.rules = append(gram.rules, Rule{NewSymbolSet("S"), NewSymbolSet("r X d")})
+	gram.rules = append(gram.rules, Rule{NewSymbolSet("X"), NewSymbolSet("o a")})
 
+	begin := Stack{}
 	begin.current = NewSymbolSet(gram.start.str())
 	ret := begin
 
@@ -63,5 +67,21 @@ func test_solution_func() {
 	} else {
 		fmt.Println("FAILED")
 	}
+}
+
+func Test_stack_clone(t *testing.T) {
+	src := Stack{}
+	src.current = NewSymbolSet("r o a d")
+	src.path = []Rule{Rule{NewSymbolSet("S"), NewSymbolSet("r X d")}}
+
+	dst := Stack{}
+	clone(&src, &dst)
+
+	dst.current = NewSymbolSet("r e a d")
+	//dst.path = []Rule{}
+	dst.path = append(dst.path, Rule{NewSymbolSet("S"), NewSymbolSet("r Z")})
+
+	t.Log(src)
+	t.Log(dst)
 
 }

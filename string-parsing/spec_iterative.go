@@ -12,6 +12,7 @@ import (
 	"strings"
 	"runtime"
 	"sync"
+	//_ "github.com/pkg/profile"
 )
 
 // ------------- Data types -------------------- //
@@ -73,12 +74,22 @@ func (src Stack) clone() Stack {
 	dst := Stack{input: src.input, current: src.current, success: src.success}
 
 	dst.path = make([]Rule, len(src.path))
+
 	for i, rule := range src.path {
 		dst.path[i] = rule
 	}
 
 	return dst
 }
+
+// *a = *b is copying data from the memory of one struct (pointed to by b)
+// onto the data of another struct (pointed to by a).
+// They continue to remain distinct areas of memory, so updates will not propagate
+func clone(src *Stack, dst *Stack) {
+	*dst = *src
+	// Fixme: nested slice doesn't work
+}
+
 
 // ------------- data type -----------
 
@@ -170,6 +181,9 @@ func evaluate_grammar(wg *sync.WaitGroup, g Grammar, data Stack, queue chan <- S
 		//go evaluate_grammar(g, s,...)
 	}
 
+	// release underlaying memory for GC
+	new_stacks = nil
+
 	//output <- data
 	return data
 }
@@ -192,15 +206,18 @@ func derive_leftmost_grammar(g Grammar, s Stack) []Stack {
 	// step 4: apply and expand the stack using R
 	stacks := expand_grammar(s, rules, index)
 
+	// release slice
+	rules = nil
+
 	return stacks
 }
 
-func find_grammar(g Grammar, lef_rule string) []Rule {
+func find_grammar(g Grammar, left_rule string) []Rule {
 	rules := make([]Rule, 0)
 
 	for _, r := range g.rules {
 		// flaten the array
-		if r.left.str() == lef_rule {
+		if r.left.str() == left_rule {
 			rules = append(rules, r)
 		}
 	}
@@ -212,8 +229,8 @@ func expand_grammar(s Stack, rules []Rule, index_of_non_terminal int) []Stack {
 	left := s.current[:index_of_non_terminal]
 	right := s.current[index_of_non_terminal + 1:]
 	// step 2: replace middle using Rule->right
-	stacks := make([]Stack, 0)
-	for _, rule := range rules {
+	stacks := make([]Stack, len(rules))
+	for i, rule := range rules {
 		// clone current stack
 		new_stack := s.clone()
 		// add new rules
@@ -222,7 +239,7 @@ func expand_grammar(s Stack, rules []Rule, index_of_non_terminal int) []Stack {
 		middle := rule.right
 		new_stack.current = left.append(middle).append(right)
 		// add it in array
-		stacks = append(stacks, new_stack)
+		stacks[i] = new_stack
 	}
 
 	return stacks
@@ -383,6 +400,9 @@ func print(grm Grammar, st Stack) {
 }
 
 func main() {
+	//defer profile.Start(profile.CPUProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
+	//defer profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
+
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	cpu := runtime.NumCPU();
 
