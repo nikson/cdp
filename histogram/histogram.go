@@ -7,7 +7,6 @@ import (
 	"io"
 	"strings"
 	"errors"
-	"sync"
 	"runtime"
 )
 
@@ -37,40 +36,30 @@ type HVPair struct {
 // ----------------- data type ----------------------------
 
 // ----------------- problem solving function -------------
-
-func count(img *PPMImage, hist []float32, key, r, g, b int, wg *sync.WaitGroup) {
-	defer wg.Done()
+func count(img PPMImage, key, r, g, b int, out chan <- HVPair) {
 	count := 0
 	for i := 0; i < img.size; i++ {
 		if (img.data[i].r == r && img.data[i].g == g && img.data[i].b == b) {
 			count++;
 		}
 	}
+
 	h := float32(count) / float32(img.size)
-	//return HVPair{index: key, value:h }
-	// hist is slice, and pass-by-reference
-	hist[key] = h
+	ret := HVPair{index: key, value:h }
+	// write to output channel
+	out <- ret
 }
 
-func Histogram(img *PPMImage) []float32 {
-	hist := make([]float32, 64)
-	wg := sync.WaitGroup{}
-	wg.Add(64)                        // ToDo: optimizatoin
-
+func Histogram(img PPMImage, out chan <- HVPair) {
 	for index, r := 0, 0; r <= 3; r++ {
 		for g := 0; g <= 3; g++ {
 			for b := 0; b <= 3; b++ {
 				// start goroutine for each count
-				go count(img, hist, index, r, g, b, &wg)
-
+				go count(img, index, r, g, b, out)
 				index++
 			}
 		}
 	}
-
-	wg.Wait()
-
-	return hist
 }
 
 // --------------------------------------------------------
@@ -147,10 +136,24 @@ func main() {
 	}
 	//fmt.Println(data)
 
-	result := Histogram(&data)
+	hist := make([]float32, 64)
+	result_chan := make(chan HVPair, 64)
+
+	go Histogram(data, result_chan)
+
+	// wait & receive all output hv pair
+	received := 0
+	for hv := range result_chan {
+		hist[hv.index] = hv.value
+		received++
+		if ( received == 64 ) {
+			close(result_chan)
+			break
+		}
+	}
 
 	// print output
-	for _, h := range result {
+	for _, h := range hist {
 		fmt.Printf("%0.3f ", h);
 	}
 	fmt.Println()
