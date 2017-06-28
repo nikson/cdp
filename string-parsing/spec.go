@@ -13,6 +13,7 @@ import (
 	"context"
 	"runtime"
 	"sync"
+	// _ "github.com/pkg/profile"
 )
 
 // ------------- Data types -------------------- //
@@ -72,11 +73,12 @@ func NewStack() Stack {
 
 func (src Stack) clone() Stack {
 	dst := Stack{input: src.input, current: src.current, success: src.success}
+	dst.path = append(dst.path, src.path...)
 
-	dst.path = make([]Rule, len(src.path))
-	for i, rule := range src.path {
-		dst.path[i] = rule
-	}
+	// dst.path = make([]Rule, len(src.path))	
+	// for i, rule := range src.path {
+	// 	dst.path[i] = rule
+	// }
 
 	return dst
 }
@@ -375,6 +377,9 @@ func print(grm Grammar, st Stack) {
 }
 
 func main() {
+	// defer profile.Start(profile.CPUProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
+	// defer profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
+
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	// read input from stdin
@@ -398,8 +403,8 @@ func main() {
 	go evaluate_grammar(ctx, result_chan, &wg, gram, begin)
 
 	// Special routine: if all evaluate_grammar routine finish without SUCCESS, detect it and push empty stack
-	go func(out chan <- Stack, wgg *sync.WaitGroup) {
-		wg.Wait()
+	go func(out chan <- Stack, wg1 *sync.WaitGroup) {
+		wg1.Wait()
 		out <- NewStack()
 	}(result_chan, &wg)
 

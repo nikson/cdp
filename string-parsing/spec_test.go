@@ -85,3 +85,7 @@ func Test_stack_clone(t *testing.T) {
 	t.Log(dst)
 
 }
+
+func clone(dst, src *Stack) {
+	*dst = *src 
+}
