@@ -2,6 +2,8 @@
 Sudoku: Based on Peter Norvig constraint propagation search/solution (http://norvig.com/sudoku.html)
 
 Board is not limited to 9x9 (square=3), It support square=n and grid=n^2xn^2
+
+Parallel constraint propagation / parallel backtrack
 */
 
 package main
@@ -11,6 +13,8 @@ import (
 	"io"
 	"os"
 	"errors"
+	"runtime"
+	"sync/atomic"
 	//_ "github.com/pkg/profile"
 )
 
@@ -49,6 +53,13 @@ type Sudoku struct {
 	peers          Peers
 	values         Values // partially solved or solved state of board
 }
+
+type TaskResult struct {
+	status bool
+	count  uint64
+}
+
+type Promise chan TaskResult
 
 func NewBoard(sz int) Board {
 	N := sz * sz
@@ -106,8 +117,7 @@ func (cv CellValue) count() int {
 	//return strings.Count(str, "1")
 }
 
-// Single 1 bit in bits, bits = 3 = 100 (binary)
-// pos=0, digit = len(bin_str) - pos = 3 - 0 = 3
+//  binary(d) = 10000 = 5
 func (cv CellValue) digit_get() int {
 	pos := 0
 	for tmp := cv.bits; tmp > 0; tmp = tmp >> 1 {
@@ -127,7 +137,6 @@ func (cv CellValue) digit_get() int {
 	//}
 	//return -1;
 }
-
 
 // Solved: If values grid hold 1 digit per cell
 func (item Values) solved() bool {
@@ -273,7 +282,7 @@ func makeValues(dim int) ([][]CellValue) {
 	return values
 }
 
-// Eliminate values
+// validate inputs and values
 func parse_grid(s Sudoku) bool {
 	for i := 0; i < s.dim; i++ {
 		for j := 0; j < s.dim; j++ {
@@ -286,6 +295,7 @@ func parse_grid(s Sudoku) bool {
 	return true
 }
 
+// try to assign value 'd' for specified (r,c)
 func assign(s Sudoku, i, j, d int) bool {
 	for v := 1; v <= s.dim; v++ {
 		if v != d && !eliminate(s, i, j, v) {
@@ -295,7 +305,7 @@ func assign(s Sudoku, i, j, d int) bool {
 	return true
 }
 
-// Remove cell values from initial set and peer
+// Remove 'd' from other values list and peers
 func eliminate(s Sudoku, i, j, d int) bool {
 
 	if ( s.values[i][j].get(d) == 0) {
@@ -342,51 +352,143 @@ func eliminate(s Sudoku, i, j, d int) bool {
 	return true
 }
 
-func search(s *Sudoku, status bool) bool {
+// find the cell which has minimum number of available option to choose.
+// minimum cell should be choosen before larger value set
+func find_minimum_option_cell(s Sudoku) (int, int) {
+	// find min row, col
+	min, r, c := (s.dim + 1), -1, -1
+
+	// select cell whihc has minimum number of available option to choose
+	for i := 0; i < s.dim; i++ {
+		for j := 0; j < s.dim; j++ {
+			remain := s.values[i][j].count()
+			if remain > 1 && remain < min {
+				min, r, c = remain, i, j
+			}
+		}
+	}
+
+	return r, c
+}
+
+func search(s Sudoku, status bool) (bool, Values) {
 
 	if !status {
-		return status
+		return status, s.values
 	}
 
 	if (s.values.solved()) {
+		// global counter for sequential program
+		solution_counter++
 		s.total_solution++
 		// write a solution
-		return (SUDOKU_COUNT_MODE == false)
+		return (SUDOKU_COUNT_MODE == false), s.values
 	}
 
-	// find min I, J
-	min, minI, minJ, ret := s.dim + 1, -1, -1, false
+	minI, minJ := find_minimum_option_cell(s)
+	ret := false
 
-	// select minimum remaining values from possible cell values
-	for i := 0; i < s.dim; i++ {
-		for j := 0; j < s.dim; j++ {
-			used := s.values[i][j].count()
-			if used > 1 && used < min {
-				min, minI, minJ = used, i, j
-			}
-		}
-	}
+	//// find min I, J
+	//min, minI, minJ, ret := (s.dim + 1), -1, -1, false
+	//
+	//// select minimum remaining values from possible cell values
+	//for i := 0; i < s.dim; i++ {
+	//	for j := 0; j < s.dim; j++ {
+	//		remain := s.values[i][j].count()
+	//		if remain > 1 && remain < min {
+	//			min, minI, minJ = remain, i, j
+	//		}
+	//	}
+	//}
 
 	for k := 1; k <= s.dim; k++ {
 		if s.values[minI][minJ].get(k) == 1 {
-			// backup values
-			values_bkp := s.values.clone()
+			value_bkp := s.values.clone()
 
-			if search(s, assign(*s, minI, minJ, k)) {
-				ret = true
-			} else {
-				s.values = values_bkp
+			// search for subtree, backtracking
+			ret, s.values = search(s, assign(s, minI, minJ, k))
+
+			// ret == false, reset values from backup
+			if !ret {
+				s.values = value_bkp
 			}
 
-			values_bkp = nil
+			// set nil, to flag for GC
+			value_bkp = nil
 		}
 	}
 
-	return ret
+	return ret, s.values
 }
 
-func solve(s *Sudoku) bool {
-	return search(s, true)
+// create new search in different thread
+func fork_subtask_async(row, col, d int, s Sudoku) Promise {
+	promise := make(Promise, 1)
+	s_temp := s
+	// create clean copy of values
+	s_temp.values = s.values.clone()
+
+	// start new goroutine for searching subtree
+	go func(s1 Sudoku) {
+		// streaming: <- <-  (push<- <-pop)
+		promise <- <-search_parallel(s1, assign(s1, row, col, d))
+		// flag for GC
+		s1.values = nil
+	}(s_temp)
+
+	return promise
+}
+
+// Search concurrently and parallel
+// FixMe: status is unnecessary here, keep it for signature similarity
+func search_parallel(s Sudoku, status bool) Promise {
+	// Non blocking channel, must be a single buffered channel
+	promise := make(Promise, 1)
+
+	if !status {
+		promise <- TaskResult{status: false, count: 0 }
+		return promise
+	}
+
+	if (s.values.solved()) {
+		promise <- TaskResult{status: false, count: 1 }
+		return promise
+	}
+
+	minI, minJ := find_minimum_option_cell(s)
+
+	// subtasks future result channels array
+	subtask := []Promise{}
+	ret := TaskResult{status: false, count: 0 }
+
+	for k := 1; k <= s.dim; k++ {
+		if s.values[minI][minJ].get(k) == 1 {
+			p := fork_subtask_async(minI, minJ, k, s)
+			subtask = append(subtask, p)
+		}
+	}
+
+	// wait for all subtask result, blocking here
+	for t := 0; t < len(subtask); t++ {
+		ret.count = ret.count + (<-subtask[t]).count
+	}
+
+	promise <- ret
+
+	return promise
+}
+
+func solve(s Sudoku) (bool, Values) {
+	ret, v := false, Values{}
+
+	if !SUDOKU_COUNT_MODE {
+		ret, v = search(s, true)
+	} else {
+		data := <-search_parallel(s, true)
+		ret, v = data.count > 0, Values{}
+		solution_counter = data.count
+	}
+	return ret, v
 }
 
 func create_sudoku(b Board) Sudoku {
@@ -399,6 +501,15 @@ func create_sudoku(b Board) Sudoku {
 	r.peer_size, r.peers = makePeers(b.unit_size, r.unit_list)
 	r.values = makeValues(r.dim)
 	return r
+}
+
+// ----------------- Parallel & Concurrent approach --------------------
+func atomic_inc() {
+	atomic.AddUint64(&solution_counter, 1)
+}
+
+func atomic_get() uint64 {
+	return atomic.LoadUint64(&solution_counter)
 }
 
 // --------------------------------------------------------
@@ -454,9 +565,13 @@ func print_solution(s Sudoku) {
 }
 // --------------------------------------------------------
 
+var solution_counter uint64
+
 func main() {
 	//defer profile.Start(profile.CPUProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
 	//defer profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook).Stop()
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	board, err := read_board(os.Stdin)
 
@@ -467,18 +582,20 @@ func main() {
 
 	//print_board(board)
 
-	s := create_sudoku(board)
+	s, ret := create_sudoku(board), false
+
+	solution_counter = 0
 
 	if parse_grid(s) {
 		// call solver function
-		solve(&s)
+		ret, s.values = solve(s)
 
-		if SUDOKU_COUNT_MODE {
-			// print total number of solution
-			fmt.Println(s.total_solution)
-		} else {
+		if ret && !SUDOKU_COUNT_MODE {
 			// print a solved board
 			print_solution(s)
+		} else {
+			// print total number of solution
+			fmt.Println(solution_counter)
 		}
 	} else {
 		fmt.Println("Could not load puzzle.")

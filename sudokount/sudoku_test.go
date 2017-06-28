@@ -72,3 +72,27 @@ func Test_digit_get(t *testing.T) {
 	cv.set(5)
 	t.Log("digit: ", cv.digit_get())
 }
+
+func countAsync(s int) (chan int) {
+	c := make(chan int, 1)
+	go func() {
+		sum := 0
+		for i := 0; i < s; i++ {
+			//time.Sleep(1000 * time.Millisecond)
+			sum = sum + i
+		}
+		c <- sum
+		fmt.Println("count done: ", s)
+	}()
+
+	return c
+}
+
+func Test_countAsync(t *testing.T) {
+	v1 := countAsync(15)
+	v2 := countAsync(30)
+
+	result :=  (<-v1) + (<-v2)
+
+	t.Log("Total Sum: ", result)
+}
