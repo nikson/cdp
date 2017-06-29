@@ -9,7 +9,7 @@ import (
 	"io"
 	"bufio"
 	"os"
-	"fmt"
+	"fmt"	
 	"errors"
 	"runtime"
 )
@@ -51,8 +51,8 @@ func NewRowChunk(id, size int) RowChunk {
 func (rc RowChunk)  play() RowChunk {
 	size := len(rc.value)
 
-	// Optimization: Use dynamic algo (DP) for counting life rules in a single loop
-	// DP algo:
+	// Optimization: Use dynamic algo for counting life rules in a single loop
+	// algo:
 	// neighbour = head_3x3 - tail_3x3 - current[row][col]; head = row + 1, tail = row - 2;
 	// head - tail = row + 1 - row + 2 =  3x3 grid sum
 	head := 0
@@ -62,21 +62,22 @@ func (rc RowChunk)  play() RowChunk {
 	}
 
 	// temporary hold the last 3 head value
-	temp := []int{head }
+	queue := [3]int{ 0, 0, head }
 
 	for k, tail := 0, 0; k < size; k++ {
-		// update head
+		// calculate next head
 		if ( k + 1 < size ) {
 			head = count_X(rc.top[k + 1], rc.bottom[k + 1], rc.value[k + 1]) + head
 		}
-		// add head in temp list
-		temp = append(temp, head)
-
-		if (k - 2 >= 0) {
-			tail = temp[0]
-			temp = temp[1:]
-		}
-
+		
+		// Optimization: using array instaed of slice, slice resizing consuming 35% of exeuction time 
+		// pop head 
+		tail = queue[0]
+		// push head 
+		queue[0] = queue[1]
+		queue[1] = queue[2]
+		queue[2] = head 
+				
 		current := 0
 		if rc.value[k] == 120 {
 			current = 1
@@ -210,6 +211,15 @@ func init_worker_pool(pool_size int, state <-chan bool, out <-chan RowChunk, in 
 	}
 }
 
+func shutdown_workers(pool_size int, state chan bool, out chan RowChunk, in chan RowChunk){
+	for i := 0; i < pool_size; i++ {
+		state <- true
+	}
+	close(out)
+	close(in)
+	close(state)
+}
+
 // ------------  input, output -----------
 
 func read_input(rd io.Reader) (Board, int, error) {
@@ -280,12 +290,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// optimization: use buffered queue
-	wstate := make(chan bool, cpu)
-	data_in := make(chan RowChunk, cpu*2)
-	data_out := make(chan RowChunk, cpu*2)
+	wstate := make(chan bool)
+	data_in := make(chan RowChunk)
+	data_out := make(chan RowChunk)
+	worker_pool_size := cpu*8
 
-	go init_worker_pool(cpu, wstate, data_in, data_out);
+	go init_worker_pool(worker_pool_size, wstate, data_in, data_out)
 
 	for i := 0; i < step; i++ {
 		// clone board inside the func and return calculated fresh copy
@@ -297,15 +307,8 @@ func main() {
 	}
 
 	// signal to shutdown worker pool
-	go func() {
-		for i := 0; i < cpu; i++ {
-			wstate <- true
-		}
-		close(data_in)
-		close(data_out)
-		close(wstate)
-	}()
-
+	go shutdown_workers(worker_pool_size, wstate, data_in, data_out)
+	
 	// print final board
 	print_board(board)
 }
