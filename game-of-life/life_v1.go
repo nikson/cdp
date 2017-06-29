@@ -253,8 +253,7 @@ func read_input(rd io.Reader) (Board, int, error) {
 
 	board := NewBoard(size)
 
-	// FIXME: there is a flaw in C sequential code, first line is empyt line, because of that i'm ignoring first line
-	for i := 1; i < size; i++ {
+	for i := 0; i < size; i++ {
 		if scanner.Scan() {
 			line := scanner.Text()
 			for k, c := range line {
